@@ -1,0 +1,83 @@
+process.on("uncaughtException", (err) => {
+  console.error("🔥 UNCAUGHT EXCEPTION:", err);
+});
+
+process.on("unhandledRejection", (reason) => {
+  console.error("🔥 UNHANDLED REJECTION:", reason);
+});
+
+require("dotenv").config();
+const express = require("express");
+const cors = require("cors");
+
+const sequelize = require("./config/db");
+const chatRoutes = require("./routes/chatRoutes");
+const connectionRoutes = require("./routes/connectionRoutes");
+const Idea = require("./models/Idea");
+const Connection = require("./models/Connection");
+const ConnectionKnowledge = require("./models/ConnectionKnowledge");
+
+// Associations
+Connection.hasMany(ConnectionKnowledge, { foreignKey: 'connectionId', sourceKey: 'connectionId' });
+ConnectionKnowledge.belongsTo(Connection, { foreignKey: 'connectionId', targetKey: 'connectionId' });
+
+const app = express();
+
+// CORS - Allow all origins with explicit headers
+app.use((req, res, next) => {
+  res.header('Access-Control-Allow-Origin', '*');
+  res.header('Access-Control-Allow-Methods', 'GET, POST, PUT, DELETE, OPTIONS');
+  res.header('Access-Control-Allow-Headers', 'Origin, X-Requested-With, Content-Type, Accept, Authorization');
+  res.header('X-Content-Type-Options', 'nosniff');
+
+  // Handle preflight requests
+  if (req.method === 'OPTIONS') {
+    return res.status(200).end();
+  }
+  next();
+});
+
+// Serve static files (widget)
+const path = require('path');
+app.use(express.static(path.join(__dirname, 'public')));
+
+app.use(express.json());
+
+// HEALTH CHECK
+app.get("/health", (req, res) => {
+  res.status(200).send("Chatbot is running");
+});
+
+// ROUTES
+app.use("/api/chat", chatRoutes);
+app.use("/api/connections", connectionRoutes);
+console.log("🔄 Mounting /api/v1/ideas...");
+app.use("/api/v1/ideas", require("./routes/ideaRoutes"));
+
+// ADMIN PANEL (Protected)
+const basicAuth = require("./middleware/auth");
+app.get("/admin", basicAuth, (req, res) => {
+  res.sendFile(path.join(__dirname, "views", "admin.html"));
+});
+
+// DATABASE SYNC & SERVER START
+const PORT = process.env.PORT || 5000;
+
+sequelize.sync({ alter: true })
+  .then(() => {
+    console.log("📦 Database synced successfully");
+
+    app.listen(PORT, () => {
+      console.log(`🚀 Server running on port ${PORT}`);
+      console.log(`📡 API endpoints:`);
+      console.log(`   POST /api/chat/send - Send chat message`);
+      console.log(`   GET  /api/chat/welcome/:connectionId - Get welcome info`);
+      console.log(`   POST /api/connections/create - Create new connection`);
+    });
+  })
+  .catch((err) => {
+    console.error("❌ Database sync failed:", err);
+  });
+
+// KEEP PROCESS ALIVE (Windows safety)
+setInterval(() => { }, 1000);

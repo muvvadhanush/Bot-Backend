@@ -1,0 +1,838 @@
+(function () {
+  const config = window.ChatbotConfig;
+  if (!config || !config.connectionId) {
+    console.error("❌ ChatbotConfig missing");
+    return;
+  }
+
+  // Determine Base URL (Config > Script Origin > Default)
+  let baseUrl = config.apiUrl;
+  if (!baseUrl) {
+    // Try to guess from the script src if possible, otherwise default to origin or localhost for dev
+    // For now, we'll default to the current origin if not specified, assuming widget is hosted with backend
+    // Or fallback to localhost if we are just a file
+    baseUrl = window.location.origin.includes('http') ? window.location.origin : 'http://localhost:5001';
+
+    // If widget is embedded on a 3rd party site, they MUST provide apiUrl or we default to a known public backend URL.
+    // Since we don't have a public URL yet, we warn.
+    if (baseUrl === 'null' || baseUrl === 'file://') {
+      baseUrl = 'http://localhost:5001';
+    }
+  }
+  // Remove trailing slash if present
+  baseUrl = baseUrl.replace(/\/$/, "");
+
+  // Session Persistence (DISABLED per user request to start fresh on load)
+  const sessionKey = `chat_session_${config.connectionId}`;
+  // Always generate a new session ID when the script loads
+  let sessionId = "widget-" + Math.random().toString(36).slice(2);
+  sessionStorage.setItem(sessionKey, sessionId);
+
+  // Create container
+  const container = document.createElement("div");
+  container.style.position = "fixed";
+  container.style.bottom = "20px";
+  container.style.right = "20px";
+  container.style.zIndex = "2147483647"; // Max Safe Integer for CSS
+  document.body.appendChild(container);
+
+  // Anti-Removal Protection (Host frameworks like React might wipe the body)
+  const observer = new MutationObserver((mutations) => {
+    if (!document.body.contains(container)) {
+      // console.warn("Widget removed by host. Re-attaching...");
+      document.body.appendChild(container);
+    }
+  });
+  observer.observe(document.body, { childList: true, subtree: true });
+
+  // Shadow DOM
+  const shadow = container.attachShadow({ mode: "open" });
+
+  shadow.innerHTML = `
+    <style>
+      :host {
+        --if-bg: #ffffff;
+        --if-text: #1f2937;
+        --if-primary: #22819A;
+        --if-secondary: #90C2E7;
+        --if-accent: #AC58E9;
+        --if-shadow: 0 10px 30px rgba(0,0,0,0.18), 0 2px 6px rgba(0,0,0,0.08);
+      }
+      @media (prefers-color-scheme: dark) {
+        :host {
+          --if-bg: #111827;
+          --if-text: #f9fafb;
+        }
+      }
+      * {
+        box-sizing: border-box;
+      }
+      #btn {
+        width: 64px;
+        height: 64px;
+        border-radius: 50%;
+        background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+        color: #fff;
+        font-size: 26px;
+        border: none;
+        cursor: pointer;
+        box-shadow: 0 8px 24px rgba(102, 126, 234, 0.4);
+        transition: transform 0.2s, box-shadow 0.2s;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        overflow: hidden;
+        padding: 0;
+      }
+      #btn-logo {
+        width: 36px;
+        height: 36px;
+        border-radius: 50%;
+        object-fit: cover;
+      }
+      #btn:hover {
+        transform: scale(1.05);
+        box-shadow: 0 12px 32px rgba(102, 126, 234, 0.5);
+      }
+
+      /* ===============================
+         Welcome Bubble — Image-1 Style
+         =============================== */
+
+            /* ===============================
+         Welcome Bubble — User Request Style
+         =============================== */
+      #welcome-bubble {
+        position: absolute; /* Changed to absolute to be relative to container */
+        right: 70px;
+        bottom: 80px; /* Adjust to sit above button */
+        
+        background: white;
+        color: #1f2937; /* var(--bg-color) assumption */
+        padding: 0.5rem 1rem;
+        border-radius: 20px;
+        border-bottom-right-radius: 0;
+        
+        font-size: 0.9rem;
+        font-weight: 500;
+        white-space: nowrap;
+        box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
+        
+        opacity: 0;
+        transform: translateY(10px);
+        transition: opacity 0.5s ease-out, transform 0.5s ease-out;
+        pointer-events: none;
+        z-index: 10000;
+      }
+
+      #welcome-bubble.is-visible {
+        opacity: 1;
+        transform: translateY(0);
+        pointer-events: auto;
+      }
+
+      /* Text */
+      #welcome-bubble span {
+        line-height: 1.4;
+      }
+
+      /* Close button - User didn't request one in this snippet, but good to keep or hide? 
+         The snippet implies it auto-hides, so maybe no close button needed. 
+         I will hide it CSS-wise just in case logic removes it. */
+      #welcome-bubble .bubble-close {
+        display: none;
+      }
+
+      /* Text */
+      #welcome-bubble span {
+        line-height: 1;
+      }
+
+      /* Close button */
+      #welcome-bubble .bubble-close {
+        width: 22px;
+        height: 22px;
+
+        display: flex;
+        align-items: center;
+        justify-content: center;
+
+        border-radius: 50%;
+        border: none;
+        background: #e5e7eb;
+        color: #374151;
+
+        font-size: 14px;
+        cursor: pointer;
+      }
+
+      #welcome-bubble .bubble-close:hover {
+        background: #d1d5db;
+      }
+
+      #panel {
+        position: fixed;
+        bottom: 100px;
+        right: 20px;
+        width: 360px;
+        height: 500px;
+        background: #fff;
+        border-radius: 16px;
+        display: none;
+        flex-direction: column;
+        box-shadow: 0 16px 48px rgba(0,0,0,.25);
+        font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+        overflow: hidden;
+        border: 1px solid rgba(0,0,0,0.1);
+      }
+      #header {
+        background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+        color: white;
+        padding: 16px;
+        display: flex;
+        align-items: center;
+        gap: 12px;
+      }
+      #header-logo {
+        width: 40px;
+        height: 40px;
+        border-radius: 10px;
+        background: rgba(255,255,255,0.2);
+        object-fit: contain;
+        padding: 4px;
+        border: 2px solid rgba(255,255,255,0.3);
+      }
+      #header-info {
+        flex: 1;
+      }
+      #header-name {
+        font-weight: 700;
+        font-size: 16px;
+        letter-spacing: 0.3px;
+        margin-bottom: 2px;
+      }
+      #header-status {
+        font-size: 12px;
+        opacity: 0.9;
+        display: flex;
+        align-items: center;
+        gap: 5px;
+      }
+      #status-dot {
+        width: 8px;
+        height: 8px;
+        background: #4ade80;
+        border-radius: 50%;
+        animation: pulse 2s infinite;
+      }
+      @keyframes pulse {
+        0%, 100% { opacity: 1; }
+        50% { opacity: 0.5; }
+      }
+      #close-btn {
+        background: rgba(255,255,255,0.2);
+        border: none;
+        color: white;
+        width: 28px;
+        height: 28px;
+        border-radius: 50%;
+        cursor: pointer;
+        font-size: 14px;
+        transition: background 0.2s;
+      }
+      #close-btn:hover {
+        background: rgba(255,255,255,0.3);
+      }
+      #messages {
+        flex: 1;
+        padding: 12px;
+        overflow-y: auto;
+        font-size: 14px;
+        background: #f8f9fa;
+      }
+      .msg {
+        margin-bottom: 12px;
+        max-width: 85%;
+        animation: fadeIn 0.3s ease;
+      }
+      @keyframes fadeIn {
+        from { opacity: 0; transform: translateY(8px); }
+        to { opacity: 1; transform: translateY(0); }
+      }
+      .msg.user {
+        margin-left: auto;
+        text-align: right;
+      }
+      .msg-bubble {
+        display: inline-block;
+        padding: 0.8rem 1rem;
+        border-radius: 12px;
+        font-size: 0.95rem;
+        line-height: 1.4;
+      }
+      .msg.user .msg-bubble {
+        background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); /* var(--primary) substitute */
+        color: white;
+        border-bottom-right-radius: 2px;
+      }
+      .msg.bot .msg-bubble {
+        background: #f3f4f6; /* Used light gray instead of transparent for visibility on white panel */
+        color: #1f2937; /* var(--text-main) */
+        border-bottom-left-radius: 2px;
+        box-shadow: none;
+      }
+      
+      /* Suggestions */
+      #suggestions {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 8px;
+        padding: 8px 12px;
+        background: #f8f9fa;
+        border-top: 1px solid #eee;
+      }
+      .suggestion-btn {
+        background: white;
+        border: 1px solid #667eea;
+        color: #667eea;
+        padding: 8px 14px;
+        border-radius: 20px;
+        font-size: 13px;
+        cursor: pointer;
+        transition: all 0.2s;
+      }
+      .suggestion-btn:hover {
+        background: #667eea;
+        color: white;
+      }
+      
+      #input-area {
+        display: flex;
+        padding: 12px;
+        border-top: 1px solid #eee;
+        background: white;
+      }
+      #text {
+        flex: 1;
+        border: 1px solid #ddd;
+        padding: 10px 14px;
+        border-radius: 24px;
+        outline: none;
+        font-size: 14px;
+        transition: border-color 0.2s;
+      }
+      #text:focus {
+        border-color: #667eea;
+      }
+      .send {
+        border: none;
+        padding: 10px 16px;
+        cursor: pointer;
+        background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+        color: white;
+        border-radius: 24px;
+        margin-left: 8px;
+        font-weight: 500;
+        transition: transform 0.2s;
+      }
+      .send:hover {
+        transform: scale(1.05);
+      }
+      
+      .typing {
+        display: flex;
+        align-items: center;
+        gap: 4px;
+        padding: 10px 14px;
+        background: white;
+        border-radius: 16px;
+        width: fit-content;
+        box-shadow: 0 2px 8px rgba(0,0,0,0.08);
+      }
+      .typing span {
+        width: 8px;
+        height: 8px;
+        background: #667eea;
+        border-radius: 50%;
+        animation: bounce 1.4s infinite ease-in-out;
+      }
+      .typing span:nth-child(1) { animation-delay: -0.32s; }
+      .typing span:nth-child(2) { animation-delay: -0.16s; }
+      @keyframes bounce {
+        0%, 80%, 100% { transform: scale(0); }
+        40% { transform: scale(1); }
+      }
+      .system-error {
+        animation: shake 0.5s cubic-bezier(.36,.07,.19,.97) both;
+      }
+      @keyframes shake {
+        10%, 90% { transform: translate3d(-1px, 0, 0); }
+        20%, 80% { transform: translate3d(2px, 0, 0); }
+        30%, 50%, 70% { transform: translate3d(-4px, 0, 0); }
+        40%, 60% { transform: translate3d(4px, 0, 0); }
+      }
+    </style>
+
+    <div id="welcome-bubble">
+      <span id="bubble-text">Hii! I Can give you Assistance...</span>
+    </div>
+    
+    <button id="btn">
+      <img id="btn-logo" src="" alt="🤖" style="display:none" />
+      <span id="btn-icon">🤖</span>
+    </button>
+
+    <div id="panel">
+      <div id="header">
+        <img id="header-logo" src="" alt="" style="display:none" />
+        <div id="header-info">
+          <div id="header-name">AI Assistant</div>
+          <div id="header-status"><span id="status-dot"></span> Online • Ready to help</div>
+        </div>
+        <button id="close-btn">✕</button>
+      </div>
+      <div id="messages" role="log" aria-live="polite" aria-relevant="additions"></div>
+      <div id="suggestions" role="group" aria-label="Suggested responses"></div>
+      <div id="input-area">
+        <input id="text" name="chatbot-message" autocomplete="off" placeholder="Type a message…" aria-label="Ask the AI assistant" />
+        <button class="send" aria-label="Send message">Send</button>
+      </div>
+    </div>
+  `;
+
+  const btn = shadow.querySelector("#btn");
+  const btnLogo = shadow.querySelector("#btn-logo");
+  const btnIcon = shadow.querySelector("#btn-icon");
+  const panel = shadow.querySelector("#panel");
+  const closeBtn = shadow.querySelector("#close-btn");
+  const messages = shadow.querySelector("#messages");
+  const suggestionsContainer = shadow.querySelector("#suggestions");
+  const input = shadow.querySelector("#text");
+  const sendBtn = shadow.querySelector(".send");
+  /* ===============================
+     Welcome Bubble Logic
+     =============================== */
+  const bubble = shadow.querySelector("#welcome-bubble");
+  const bubbleCloseBtn = bubble.querySelector(".bubble-close");
+  const bubbleText = shadow.querySelector("#bubble-text"); // Required for auto-extract to update text
+  /* ===============================
+     Welcome Bubble Logic (Timer Based)
+     =============================== */
+
+
+  // Initial Logic: Show after 1s, Hide after 5s
+  setTimeout(() => {
+    bubble.classList.add("is-visible");
+
+    // Hide after 5 seconds of showing
+    setTimeout(() => {
+      bubble.classList.remove("is-visible");
+    }, 5000);
+  }, 1000);
+
+
+  // Dismiss logic (if they click it manually to open chat)
+  bubble.onclick = () => {
+    bubble.classList.remove("is-visible");
+    panel.style.display = "flex";
+  };
+
+  // Click bubble to open (optional, keeps existing behavior)
+  // Removed duplicate click handler
+
+  btn.onclick = () => {
+    bubble.classList.remove("is-visible");
+    panel.style.display = panel.style.display === "flex" ? "none" : "flex";
+    // Also dismiss bubble if they manually open chat
+    // localStorage.setItem(KEY_DISMISSED, "true");
+  };
+
+  closeBtn.onclick = () => {
+    panel.style.display = "none";
+  };
+
+  // Auto-extract knowledge base from host website
+  async function autoExtractKnowledgeBase() {
+    const storageKey = `chatbot_kb_extracted_${config.connectionId}`;
+
+    // Check if already extracted
+    if (localStorage.getItem(storageKey)) {
+      console.log("✅ Knowledge base already extracted for this connection");
+      return;
+    }
+
+    try {
+      const hostUrl = window.location.origin;
+      console.log(`🔍 Auto-extracting knowledge base from: ${hostUrl}`);
+
+      const response = await fetch(`${baseUrl}/api/connections/auto-extract`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          connectionId: config.connectionId,
+          hostUrl: hostUrl
+        })
+      });
+
+      const data = await response.json();
+
+      if (data.success) {
+        console.log("✅ Knowledge base extracted:", data.message);
+        // Mark as extracted
+        localStorage.setItem(storageKey, "true");
+
+        // Update welcome message and bot name if provided
+        if (data.welcomeMessage) {
+          bubbleText.textContent = data.welcomeMessage;
+        }
+        if (data.botName) {
+          headerName.textContent = data.botName;
+        }
+      } else {
+        console.warn("⚠️ Auto-extract failed:", data.error);
+      }
+    } catch (error) {
+      console.error("❌ Auto-extract error:", error);
+      // Don't block widget functionality if extraction fails
+    }
+  }
+
+  // --- SESSION PERSISTENCE ---
+  const storageKey = `chat_history_${config.connectionId}`;
+
+  // Trigger auto-extract and session load
+  // loadSession(); // Disabled to start fresh
+  setTimeout(() => autoExtractKnowledgeBase(), 1000);
+
+  function loadSession() {
+    const saved = sessionStorage.getItem(storageKey);
+    if (saved) {
+      try {
+        const history = JSON.parse(saved);
+        history.forEach(m => addMessage(m.text, m.who, false));
+      } catch (e) {
+        sessionStorage.removeItem(storageKey);
+      }
+    }
+  }
+
+  function saveMessage(text, who) {
+    const history = JSON.parse(sessionStorage.getItem(storageKey) || "[]");
+    history.push({ text, who });
+    sessionStorage.setItem(storageKey, JSON.stringify(history));
+  }
+
+  function addMessage(text, who = "bot", save = true) {
+    if (save) saveMessage(text, who);
+
+    const div = document.createElement("div");
+    div.className = `msg ${who}`;
+    div.setAttribute("role", "listitem");
+    // Handle newlines like the user requested: text.split('\n') -> <br>
+    const formattedText = text.replace(/\n/g, '<br>');
+    div.innerHTML = `<div class="msg-bubble">${formattedText}</div>`;
+    messages.appendChild(div);
+    scrollToBottom();
+  }
+
+  function scrollToBottom() {
+    messages.scrollTo({
+      top: messages.scrollHeight,
+      behavior: 'smooth'
+    });
+  }
+
+  function showTyping() {
+    const div = document.createElement("div");
+    div.className = "msg bot";
+    div.id = "typing-indicator";
+    div.innerHTML = `<div class="typing"><span></span><span></span><span></span></div>`;
+    messages.appendChild(div);
+    messages.scrollTop = messages.scrollHeight;
+  }
+
+  function hideTyping() {
+    const typing = shadow.querySelector("#typing-indicator");
+    if (typing) typing.remove();
+  }
+
+  function showSuggestions(suggestions) {
+    suggestionsContainer.innerHTML = "";
+    if (!suggestions || suggestions.length === 0) {
+      suggestionsContainer.style.display = "none";
+      return;
+    }
+    suggestionsContainer.style.display = "flex";
+    suggestions.forEach(text => {
+      const btn = document.createElement("button");
+      btn.className = "suggestion-btn";
+      btn.textContent = text;
+      btn.onclick = () => {
+        input.value = text;
+        sendMessage();
+      };
+      suggestionsContainer.appendChild(btn);
+    });
+  }
+
+  async function sendMessage(textOverride) {
+    const text = textOverride || input.value.trim();
+    if (!text) return;
+
+    addMessage(text, "user");
+    input.value = "";
+    showSuggestions([]); // Hide suggestions while loading
+    showTyping();
+
+    try {
+      const res = await fetch(`${baseUrl}/api/chat/send`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          message: text,
+          connectionId: config.connectionId,
+          sessionId
+        })
+      });
+
+      hideTyping();
+
+      if (!res.ok) {
+        showError("Server busy. Please try again in a moment.");
+        return;
+      }
+
+      const data = await res.json();
+
+      if (data.messages && data.messages.length) {
+        addMessage(data.messages[data.messages.length - 1].text, "bot");
+      }
+
+      if (data.suggestions && data.suggestions.length) {
+        showSuggestions(data.suggestions);
+      }
+
+      // --- HANDLE CLIENT ACTIONS ---
+      if (data.action) {
+        console.log("⚡ Executing Client Action:", data.action);
+        handleClientAction(data.action);
+      }
+
+    } catch (e) {
+      hideTyping();
+      showError("Connection lost. Retrying in 3s...");
+      setTimeout(() => {
+        const lastErr = shadow.querySelector(".system-error-msg");
+        if (lastErr) lastErr.remove();
+        sendMessage(text);
+      }, 3000);
+    }
+  }
+
+  function handleClientAction(action) {
+    if (!action) return;
+
+    try {
+      if (action.type === "CLICK" || action.type === "NAVIGATE") {
+        let el = null;
+        if (action.selector) {
+          // Try precise selector
+          el = document.querySelector(action.selector);
+        }
+
+        // Fallback: Text search (jQuery style contains)
+        if (!el && action.text) {
+          const all = document.querySelectorAll("button, a");
+          for (let node of all) {
+            if (node.textContent.toLowerCase().includes(action.text.toLowerCase())) {
+              el = node;
+              break;
+            }
+          }
+        }
+
+        if (el) {
+          highlightElement(el);
+          setTimeout(() => {
+            el.click();
+            if (action.href && el.tagName === "A") {
+              window.location.href = action.href; // Force nav if click doesn't work
+            }
+          }, 1000); // Wait for user to see highlight
+        } else {
+          console.warn("❌ Could not find element for action:", action);
+        }
+
+      } else if (action.type === "FILL_FORM") {
+        // Find form
+        const forms = document.querySelectorAll("form");
+        let targetForm = Array.from(forms).find(f => f.id === action.formName || f.name === action.formName);
+
+        // Fallback: finding inputs globally if form name is fuzzy
+        if (!targetForm) targetForm = document;
+
+        if (action.data) {
+          for (const [key, value] of Object.entries(action.data)) {
+            const input = targetForm.querySelector(`[name="${key}"]`);
+            if (input) {
+              highlightElement(input);
+              input.value = value;
+              // Dispatch event so React/Vue notices
+              input.dispatchEvent(new Event('input', { bubbles: true }));
+              input.dispatchEvent(new Event('change', { bubbles: true }));
+            }
+          }
+        }
+
+        // Submitting?
+        if (targetForm && targetForm.tagName === "FORM") {
+          setTimeout(() => {
+            // targetForm.submit(); // Aggressive! Maybe just let user click submit?
+            const submitBtn = targetForm.querySelector('[type="submit"], button:not([type])');
+            if (submitBtn) {
+              highlightElement(submitBtn);
+              // submitBtn.click(); // Auto-click or just show? Let's simply highlight for now.
+            }
+          }, 1500);
+        }
+      }
+
+    } catch (err) {
+      console.error("Action handler failed:", err);
+    }
+  }
+
+  function highlightElement(el) {
+    if (!el) return;
+    el.scrollIntoView({ behavior: "smooth", block: "center" });
+    const originalBorder = el.style.border;
+    const originalBoxShadow = el.style.boxShadow;
+    const originalTransition = el.style.transition;
+
+    el.style.transition = "all 0.5s ease";
+    el.style.border = "2px solid #667eea";
+    el.style.boxShadow = "0 0 15px rgba(102, 126, 234, 0.6)";
+
+    setTimeout(() => {
+      el.style.border = originalBorder;
+      el.style.boxShadow = originalBoxShadow;
+      el.style.transition = originalTransition;
+    }, 2000);
+  }
+
+  function showError(msg) {
+    const div = document.createElement("div");
+    div.className = "msg system-error-msg";
+    div.style.cssText = "color: #ef4444; font-size: 12px; text-align: center; margin-bottom: 12px; font-weight: 500;";
+    div.innerHTML = `⚠️ ${msg}`;
+    messages.appendChild(div);
+    scrollToBottom();
+  }
+
+  sendBtn.onclick = () => sendMessage();
+  input.addEventListener("keydown", e => e.key === "Enter" && sendMessage());
+
+  // Get host website favicon
+  function getFavicon() {
+    // Try to find favicon from link tags
+    const links = document.querySelectorAll('link[rel*="icon"]');
+    for (const link of links) {
+      if (link.href) return link.href;
+    }
+
+    // Fallback logic
+    if (window.location.protocol === 'file:') {
+      // Return a transparent 1x1 base64 to avoid ERR_FILE_NOT_FOUND
+      return 'data:image/gif;base64,R0lGODlhAQABAIAAAAAAAP///yH5BAEAAAAALAAAAAABAAEAAAIBRAA7';
+    }
+
+    return window.location.origin + '/favicon.ico';
+  }
+
+  // Set up header with favicon and name
+  const headerLogo = shadow.querySelector("#header-logo");
+  const headerName = shadow.querySelector("#header-name");
+
+  // Load favicon for header and button
+  const faviconUrl = getFavicon();
+
+  // Set header logo
+  headerLogo.src = faviconUrl;
+  headerLogo.onload = () => { headerLogo.style.display = 'block'; };
+  headerLogo.onerror = () => { headerLogo.style.display = 'none'; };
+
+  // Set button logo
+  btnLogo.src = faviconUrl;
+  btnLogo.onload = () => {
+    btnLogo.style.display = 'block';
+    btnIcon.style.display = 'none';
+  };
+  btnLogo.onerror = () => {
+    btnLogo.style.display = 'none';
+    btnIcon.style.display = 'block';
+  };
+
+  // Fetch welcome info from server
+  fetch(`${baseUrl}/api/chat/welcome/${config.connectionId}`)
+    .then(r => r.json())
+    .then(data => {
+      if (data.assistantName) {
+        headerName.textContent = data.assistantName;
+      }
+      if (data.welcomeMessage) {
+        bubbleText.textContent = data.welcomeMessage;
+      }
+
+      // Update Logo if provided
+      if (data.logoUrl) {
+        const logoUrl = data.logoUrl;
+
+        // Update header logo
+        headerLogo.src = logoUrl;
+        headerLogo.onload = () => { headerLogo.style.display = 'block'; };
+
+        // Update button logo
+        btnLogo.src = logoUrl;
+        btnLogo.onload = () => {
+          btnLogo.style.display = 'block';
+          btnIcon.style.display = 'none';
+        };
+      }
+    })
+    .catch(() => { });
+  // --- DEBUGGING TOOL ---
+  window.ChatbotDebug = () => {
+    console.group("🤖 Chatbot Debugger");
+    console.log("Status: Initialized");
+    console.log("Config:", config);
+    console.log("Container in Body:", document.body.contains(container));
+    console.log("Z-Index:", container.style.zIndex);
+
+    const elements = {
+      "Button (#btn)": btn,
+      "Panel (#panel)": panel,
+      "Messages (#messages)": messages,
+      "Input (#text)": input,
+      "Welcome Bubble": welcomeBubble
+    };
+
+    let allGood = true;
+    for (const [name, el] of Object.entries(elements)) {
+      if (el) {
+        console.log(`✅ ${name}: Found`, el);
+      } else {
+        console.error(`❌ ${name}: MISSING`);
+        allGood = false;
+      }
+    }
+
+    if (allGood) {
+      console.log("🎉 All systems go! Widget elements are present.");
+    } else {
+      console.warn("⚠️ Some elements are missing. Check console errors.");
+    }
+    console.groupEnd();
+  };
+
+  console.log("🤖 Chatbot Widget Loaded. Run window.ChatbotDebug() to verify.");
+})();

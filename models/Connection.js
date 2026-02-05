@@ -1,0 +1,118 @@
+const { DataTypes } = require("sequelize");
+const sequelize = require("../config/db");
+
+const Connection = sequelize.define("Connection", {
+  connectionId: {
+    type: DataTypes.STRING,
+    // unique: true, -- Removed to fix ER_TOO_MANY_KEYS
+    allowNull: false
+  },
+
+  connectionSecret: {
+    type: DataTypes.STRING,
+    allowNull: false
+  },
+
+  websiteName: DataTypes.STRING,
+  websiteDescription: DataTypes.TEXT,
+  logoUrl: {
+    type: DataTypes.STRING,
+    allowNull: true,
+    comment: "Extracted or uploaded branding logo URL"
+  },
+
+  // Branding (Phase 10)
+  faviconPath: {
+    type: DataTypes.STRING,
+    allowNull: true,
+    comment: "Local path to favicon icon"
+  },
+  logoPath: {
+    type: DataTypes.STRING,
+    allowNull: true,
+    comment: "Local path to branding logo"
+  },
+  brandingStatus: {
+    type: DataTypes.ENUM('PENDING', 'READY', 'PARTIAL', 'FAILED'),
+    defaultValue: 'PENDING'
+  },
+
+  assistantName: {
+    type: DataTypes.STRING,
+    defaultValue: "AI Assistant"
+  },
+
+  tone: {
+    type: DataTypes.STRING,
+    defaultValue: "professional"
+  },
+
+  // 👇 IMPORTANT FOR SECURITY
+  allowedDomains: {
+    type: DataTypes.JSON, // ["http://localhost:3000", "https://mydomain.com"]
+    allowNull: true
+  },
+
+  theme: {
+    type: DataTypes.JSON,
+    defaultValue: {
+      primary: "#4f46e5",
+      background: "#ffffff",
+      text: "#111111"
+    }
+  },
+
+  // Universal AI Assistant fields
+  systemPrompt: {
+    type: DataTypes.TEXT,
+    allowNull: true,
+    comment: "Custom AI instructions for this website"
+  },
+
+  knowledgeBase: {
+    type: DataTypes.TEXT,
+    allowNull: true,
+    comment: "FAQs, product info, company details for AI context"
+  },
+
+  extractedTools: {
+    type: DataTypes.JSON,
+    allowNull: true,
+    defaultValue: [],
+    comment: "Tools automatically discovered from the website (forms, navigation)"
+  },
+
+  welcomeMessage: {
+    type: DataTypes.STRING,
+    defaultValue: "Hi! How can I help you today?"
+  },
+
+  capabilities: {
+    type: DataTypes.JSON,
+    defaultValue: ["general"],
+    comment: "e.g. ['support', 'sales', 'booking']"
+  },
+
+  // Phase 5: Generic Action Configuration
+  actionConfig: {
+    type: DataTypes.JSON,
+    defaultValue: {
+      type: "SAVE",
+      config: { target: "ideas_table" }
+    },
+    comment: "Defines what happens after flow completion: { type: 'WEBHOOK'|'SAVE'|'EMAIL'|'NONE', config: {} }"
+  },
+
+  // Phase 6: Granular Permissions
+  permissions: {
+    type: DataTypes.JSON, // { modes: [], actions: [], aiEnabled: true }
+    defaultValue: {
+      modes: ["FREE_CHAT"], // Default: No Guided Flow
+      actions: ["SAVE"],    // Default: Save only
+      aiEnabled: true
+    },
+    comment: "Explicitly allowed modes and actions"
+  }
+});
+
+module.exports = Connection;
