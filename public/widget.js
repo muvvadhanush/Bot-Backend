@@ -475,20 +475,39 @@
 
       const data = await response.json();
 
-      if (data.success) {
-        console.log("✅ Knowledge base extracted:", data.message);
+      if (data.status === "initialized" && data.bot_identity) {
+        const iden = data.bot_identity;
+        console.log("✅ Bot identity initialized:", iden.name);
+
         // Mark as extracted
         localStorage.setItem(storageKey, "true");
 
         // Update welcome message and bot name if provided
-        if (data.welcomeMessage) {
-          bubbleText.textContent = data.welcomeMessage;
+        if (iden.welcomeMessage) {
+          bubbleText.textContent = iden.welcomeMessage;
         }
-        if (data.botName) {
-          headerName.textContent = data.botName;
+        if (iden.name) {
+          headerName.textContent = iden.name;
+        }
+
+        // Update Logo if provided
+        if (iden.logoUrl) {
+          let logoUrl = iden.logoUrl;
+          if (logoUrl.startsWith("/")) logoUrl = `${baseUrl}${logoUrl}`;
+
+          // Update header logo
+          headerLogo.src = logoUrl;
+          headerLogo.onload = () => { headerLogo.style.display = "block"; };
+
+          // Update button logo
+          btnLogo.src = logoUrl;
+          btnLogo.onload = () => {
+            btnLogo.style.display = "block";
+            btnIcon.style.display = "none";
+          };
         }
       } else {
-        console.warn("⚠️ Auto-extract failed:", data.error);
+        console.warn("⚠️ Auto-extract failed or returned unexpected data:", data);
       }
     } catch (error) {
       console.error("❌ Auto-extract error:", error);
@@ -784,7 +803,8 @@
 
       // Update Logo if provided
       if (data.logoUrl) {
-        const logoUrl = data.logoUrl;
+        let logoUrl = data.logoUrl;
+        if (logoUrl.startsWith("/")) logoUrl = `${baseUrl}${logoUrl}`;
 
         // Update header logo
         headerLogo.src = logoUrl;
