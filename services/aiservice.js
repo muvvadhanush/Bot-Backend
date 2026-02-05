@@ -123,3 +123,56 @@ If the user asks to submit an idea, tell them to type 'submit idea'.`;
     return "I'm having a bit of trouble connecting right now. Please try again.";
   }
 };
+
+/**
+ * Phase 5/7: Extract structured data from user messages for the state machine.
+ */
+exports.extractImpact = async (text) => {
+  try {
+    if (!text || text.length < 2) return { impact: null };
+
+    const response = await openai.chat.completions.create({
+      model: "gpt-4o-mini",
+      messages: [
+        { role: "system", content: "Output JSON only. Key: 'impact' (string or null). Summarize the user's stated impact/goal in 5-10 words." },
+        { role: "user", content: `Extract impact from: "${text}"` }
+      ],
+      response_format: { type: "json_object" },
+      max_tokens: 100
+    });
+
+    const data = JSON.parse(response.choices[0].message.content);
+    return { impact: data.impact || null };
+  } catch (err) {
+    console.error("AI extractImpact Error:", err.message);
+    return { impact: null };
+  }
+};
+
+/**
+ * Phase 11: Auto-Extract Identity.
+ * Infers name, tone, and summary from homepage text.
+ */
+exports.inferBotIdentity = async (text) => {
+  try {
+    if (!text || text.length < 10) return null;
+
+    const response = await openai.chat.completions.create({
+      model: "gpt-4o-mini",
+      messages: [
+        {
+          role: "system",
+          content: "Output JSON only. Keys: 'bot_name' (max 2 words), 'welcome_message' (1 sentence), 'tone' (formal|friendly|neutral), 'site_summary' (2-3 sentences)."
+        },
+        { role: "user", content: `Infer bot identity from this website content:\n\n${text.substring(0, 3000)}` }
+      ],
+      response_format: { type: "json_object" },
+      max_tokens: 400
+    });
+
+    return JSON.parse(response.choices[0].message.content);
+  } catch (err) {
+    console.error("AI inferBotIdentity Error:", err.message);
+    return null;
+  }
+};

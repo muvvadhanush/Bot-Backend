@@ -1,7 +1,11 @@
 const express = require("express");
 const router = express.Router();
 const Connection = require("../models/Connection");
+const ConnectionKnowledge = require("../models/ConnectionKnowledge");
 const scraperService = require("../services/scraperService");
+const aiService = require("../services/aiservice");
+
+console.log("🔥 connectionRoutes.js LOADED");
 
 // Create a new connection
 router.post("/create", async (req, res) => {
@@ -9,6 +13,205 @@ router.post("/create", async (req, res) => {
     const connection = await Connection.create(req.body);
     res.json(connection);
   } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
+// --- PART 1: AUTO EXTRACT / BRANDING (Identity) ---
+// Fetch Branding (Favicon/Logo) - Updates Identity ONLY
+router.post("/:connectionId/branding/fetch", async (req, res) => {
+  console.log(`📡 Hit branding/fetch for ${req.params.connectionId}`);
+  try {
+    const { connectionId } = req.params;
+    const { url } = req.body;
+
+    const connection = await Connection.findOne({ where: { connectionId } });
+    if (!connection) return res.status(404).json({ error: "Connection not found" });
+
+    if (!url) return res.status(400).json({ error: "URL is required" });
+
+    const branding = await scraperService.fetchBranding(url, connectionId);
+
+    // Update Identity Fields ONLY
+    await connection.update({
+      faviconPath: branding.faviconPath,
+      logoPath: branding.logoPath,
+      brandingStatus: branding.status
+    });
+
+    res.json({ success: true, branding });
+
+  } catch (error) {
+    console.error("Branding Error:", error);
+    res.status(500).json({ error: error.message });
+  }
+});
+
+// --- PART 2: KNOWLEDGE INGESTION (Training) ---
+// Ingest Knowledge - Updates Knowledge ONLY
+router.post("/:connectionId/knowledge/ingest", async (req, res) => {
+  try {
+    const { connectionId } = req.params;
+    const { sourceType, sourceValue } = req.body; // 'URL' or 'TEXT'
+
+    if (!sourceType || !sourceValue) return res.status(400).json({ error: "Missing type or value" });
+
+    const connection = await Connection.findOne({ where: { connectionId } });
+    if (!connection) return res.status(404).json({ error: "Connection not found" });
+
+    // Idempotency: Check if exists to avoid duplicates
+    // We match strict sourceType + sourceValue for the same connection
+    let knowledge = await ConnectionKnowledge.findOne({
+      where: { connectionId, sourceType, sourceValue }
+    });
+
+    // Process Content
+    let contentData = { rawText: "", cleanedText: "" };
+
+    if (sourceType === 'URL') {
+      contentData = await scraperService.ingestURL(sourceValue);
+    } else {
+      contentData = scraperService.ingestText(sourceValue);
+    }
+
+    if (knowledge) {
+      // Update existing
+      await knowledge.update({
+        rawText: contentData.rawText,
+        cleanedText: contentData.cleanedText,
+        status: 'READY',
+        updatedAt: new Date()
+      });
+    } else {
+      // Create new
+      knowledge = await ConnectionKnowledge.create({
+        connectionId,
+        sourceType,
+        sourceValue,
+        rawText: contentData.rawText,
+        cleanedText: contentData.cleanedText,
+        status: 'READY',
+        metadata: {}
+      });
+    }
+
+    res.json({ success: true, knowledgeId: knowledge.id });
+
+  } catch (error) {
+    console.error("Ingest Error:", error);
+    res.status(500).json({ error: error.message });
+  }
+});
+
+// --- NEW SYSTEM: STRICT SEPARATION ---
+
+/**
+ * AUTO EXTRACT (Setup)
+ * Goal: Initialize Bot Identity.
+ * Rule: Identity fields ONLY. No training data.
+ */
+router.post("/:connectionId/auto-extract", async (req, res) => {
+  try {
+    const { connectionId } = req.params;
+    const { url } = req.body;
+
+    const connection = await Connection.findOne({ where: { connectionId } });
+    if (!connection) return res.status(404).json({ error: "Connection not found" });
+
+    if (!url) return res.status(400).json({ error: "URL is required" });
+
+    // 1. Scrape Metadata & Text
+    const result = await scraperService.scrapeWebsite(url);
+    if (!result.success) return res.status(500).json({ error: result.error });
+
+    // 2. Fetch Branding (Images)
+    const branding = await scraperService.fetchBranding(url, connectionId);
+
+    // 3. AI Inference for Identity
+    const identity = await aiService.inferBotIdentity(result.rawText);
+
+    // 4. Update CONNECTION Table ONLY
+    const updateData = {
+      assistantName: identity?.bot_name || result.metadata.title || "AI Assistant",
+      welcomeMessage: identity?.welcome_message || `Welcome to ${result.metadata.title}!`,
+      tone: identity?.tone || "neutral",
+      websiteDescription: identity?.site_summary || result.metadata.description || "",
+      logoUrl: branding.logoPath || branding.faviconPath || null, // Best available
+      brandingStatus: branding.status
+    };
+
+    await connection.update(updateData);
+
+    res.json({
+      status: "initialized",
+      bot_identity: {
+        name: updateData.assistantName,
+        welcomeMessage: updateData.welcomeMessage,
+        tone: updateData.tone,
+        summary: updateData.websiteDescription
+      }
+    });
+
+  } catch (error) {
+    console.error("Auto Extract Error:", error);
+    res.status(500).json({ error: error.message });
+  }
+});
+
+/**
+ * KNOWLEDGE INGESTION (Training)
+ * Goal: Add granular knowledge chunks.
+ * Rule: Training data ONLY. No identity changes.
+ */
+router.post("/:connectionId/knowledge-ingest", async (req, res) => {
+  try {
+    const { connectionId } = req.params;
+
+    if (!req.body) {
+      return res.status(400).json({ error: "Request body is missing. Ensure Content-Type is application/json" });
+    }
+
+    const { sourceType, sourceValue } = req.body; // 'url', 'text'
+
+    if (!sourceType || !sourceValue) return res.status(400).json({ error: "Missing type or value" });
+
+    const connection = await Connection.findOne({ where: { connectionId } });
+    if (!connection) return res.status(404).json({ error: "Connection not found" });
+
+    // Process Content
+    let contentData = { rawText: "", cleanedText: "" };
+    if (sourceType.toLowerCase() === 'url') {
+      contentData = await scraperService.ingestURL(sourceValue);
+    } else {
+      contentData = scraperService.ingestText(sourceValue);
+    }
+
+    // Idempotency: Update existing or create new
+    const [knowledge, created] = await ConnectionKnowledge.findOrCreate({
+      where: { connectionId, sourceType: sourceType.toUpperCase(), sourceValue },
+      defaults: {
+        rawText: contentData.rawText,
+        cleanedText: contentData.cleanedText,
+        status: 'READY'
+      }
+    });
+
+    if (!created) {
+      await knowledge.update({
+        rawText: contentData.rawText,
+        cleanedText: contentData.cleanedText,
+        status: 'READY'
+      });
+    }
+
+    res.json({
+      success: true,
+      status: created ? "created" : "updated",
+      knowledgeId: knowledge.id
+    });
+
+  } catch (error) {
+    console.error("Knowledge Ingest Error:", error);
     res.status(500).json({ error: error.message });
   }
 });
@@ -135,6 +338,22 @@ router.get("/:connectionId", async (req, res) => {
   try {
     const connection = await Connection.findOne({
       where: { connectionId: req.params.connectionId }
+    });
+    if (!connection) {
+      return res.status(404).json({ error: "Connection not found" });
+    }
+    res.json(connection);
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
+// Get connection details with knowledge base
+router.get("/:connectionId/details", async (req, res) => {
+  try {
+    const connection = await Connection.findOne({
+      where: { connectionId: req.params.connectionId },
+      include: [{ model: ConnectionKnowledge }]
     });
     if (!connection) {
       return res.status(404).json({ error: "Connection not found" });

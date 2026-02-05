@@ -88,7 +88,7 @@ document.getElementById('extractBtn').addEventListener('click', async (e) => {
     btn.disabled = true;
 
     try {
-        const res = await fetch(`${API_BASE}/scrape`, {
+        const res = await fetch(`${API_BASE}/${isEditMode ? currentEditId : 'temp'}/auto-extract`, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({ url })
@@ -351,7 +351,7 @@ document.getElementById('ingestBtn').addEventListener('click', async () => {
     btn.disabled = true;
 
     try {
-        const res = await fetch(`${API_BASE}/${currentEditId}/knowledge/ingest`, {
+        const res = await fetch(`${API_BASE}/${currentEditId}/knowledge-ingest`, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({ sourceType: type, sourceValue: val })

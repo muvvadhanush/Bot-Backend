@@ -1,3 +1,11 @@
+const dns = require('dns');
+// Force IPv4 to avoid ENOTFOUND on some Windows/Node setups with Supabase
+try {
+  dns.setDefaultResultOrder('ipv4first');
+} catch (e) {
+  // ignore
+}
+
 process.on("uncaughtException", (err) => {
   console.error("🔥 UNCAUGHT EXCEPTION:", err);
 });
@@ -63,17 +71,20 @@ app.get("/admin", basicAuth, (req, res) => {
 // DATABASE SYNC & SERVER START
 const PORT = process.env.PORT || 5000;
 
-sequelize.sync({ alter: true })
+// DATABASE SYNC & SERVER START
+/* const PORT = process.env.PORT || 5000; (Removed duplicate) */
+
+app.listen(PORT, () => {
+  console.log(`🚀 Server running on port ${PORT}`);
+  console.log(`📡 API endpoints:`);
+  console.log(`   POST /api/chat/send - Send chat message`);
+  console.log(`   GET  /api/chat/welcome/:connectionId - Get welcome info`);
+  console.log(`   POST /api/connections/create - Create new connection`);
+});
+
+sequelize.sync()
   .then(() => {
     console.log("📦 Database synced successfully");
-
-    app.listen(PORT, () => {
-      console.log(`🚀 Server running on port ${PORT}`);
-      console.log(`📡 API endpoints:`);
-      console.log(`   POST /api/chat/send - Send chat message`);
-      console.log(`   GET  /api/chat/welcome/:connectionId - Get welcome info`);
-      console.log(`   POST /api/connections/create - Create new connection`);
-    });
   })
   .catch((err) => {
     console.error("❌ Database sync failed:", err);

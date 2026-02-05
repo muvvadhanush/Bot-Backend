@@ -2,10 +2,8 @@
  * Scraper Service
  * Handles safe fetching and cleaning of content for Knowledge Ingestion.
  */
-class ScraperService {
-
-    const fs = require('fs');
-    const path = require('path');
+const fs = require('fs');
+const path = require('path');
 const { pipeline } = require('stream/promises');
 
 class ScraperService {
@@ -127,6 +125,47 @@ class ScraperService {
             return true;
         } catch (e) {
             return false;
+        }
+    }
+
+    /**
+     * Scrape Website (Identity Scan)
+     * Fetches homepage and extracts metadata/content for bot identity suggestions.
+     */
+    async scrapeWebsite(url) {
+        try {
+            const response = await fetch(url, {
+                headers: { "User-Agent": "ChatbotIdentityBot/1.0" }
+            });
+
+            if (!response.ok) throw new Error("Failed to fetch website");
+
+            const html = await response.text();
+
+            // Extract Title
+            const titleMatch = html.match(/<title[^>]*>([^<]+)<\/title>/i);
+            const title = titleMatch ? titleMatch[1].trim() : "";
+
+            // Extract Meta Description
+            const descMatch = html.match(/<meta[^>]+name=["']description["'][^>]+content=["']([^"']+)["']/i);
+            const description = descMatch ? descMatch[1].trim() : "";
+
+            // Extract Clean Body Text (for AI inference)
+            const cleanText = this._cleanHTML(html);
+
+            return {
+                success: true,
+                metadata: {
+                    title,
+                    description
+                },
+                rawText: cleanText // Returning clean text as "rawText" for route compatibility
+            };
+        } catch (error) {
+            return {
+                success: false,
+                error: error.message
+            };
         }
     }
 
