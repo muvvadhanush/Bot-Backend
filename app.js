@@ -53,7 +53,11 @@ app.use(express.json());
 
 // HEALTH CHECK
 app.get("/health", (req, res) => {
-  res.status(200).send("Chatbot is running");
+  res.status(200).json({
+    status: "ok",
+    service: "chatbot-backend",
+    timestamp: new Date().toISOString(),
+  });
 });
 
 // ROUTES
@@ -71,23 +75,21 @@ app.get("/admin", basicAuth, (req, res) => {
 // DATABASE SYNC & SERVER START
 const PORT = process.env.PORT || 5000;
 
-// DATABASE SYNC & SERVER START
-/* const PORT = process.env.PORT || 5000; (Removed duplicate) */
-
-app.listen(PORT, () => {
-  console.log(`🚀 Server running on port ${PORT}`);
-  console.log(`📡 API endpoints:`);
-  console.log(`   POST /api/chat/send - Send chat message`);
-  console.log(`   GET  /api/chat/welcome/:connectionId - Get welcome info`);
-  console.log(`   POST /api/connections/create - Create new connection`);
-});
-
 sequelize.sync()
   .then(() => {
     console.log("📦 Database synced successfully");
+
+    app.listen(PORT, () => {
+      console.log(`🚀 Server running on port ${PORT}`);
+      console.log(`📡 API endpoints:`);
+      console.log(`   POST /api/chat/send`);
+      console.log(`   GET  /api/chat/welcome/:connectionId`);
+      console.log(`   POST /api/connections/create`);
+    });
   })
   .catch((err) => {
     console.error("❌ Database sync failed:", err);
+    process.exit(1); // fail fast in production
   });
 
 // KEEP PROCESS ALIVE (Windows safety)
