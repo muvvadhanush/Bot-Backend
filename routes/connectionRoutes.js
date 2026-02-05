@@ -114,9 +114,12 @@ router.post("/:connectionId/auto-extract", async (req, res) => {
   try {
     const { connectionId } = req.params;
     const { url } = req.body;
+    const isTemp = connectionId === 'temp';
 
-    const connection = await Connection.findOne({ where: { connectionId } });
-    if (!connection) return res.status(404).json({ error: "Connection not found" });
+    if (!isTemp) {
+      connection = await Connection.findOne({ where: { connectionId } });
+      if (!connection) return res.status(404).json({ error: "Connection not found" });
+    }
 
     if (!url) return res.status(400).json({ error: "URL is required" });
 
@@ -130,8 +133,8 @@ router.post("/:connectionId/auto-extract", async (req, res) => {
     // 3. AI Inference for Identity
     const identity = await aiService.inferBotIdentity(result.rawText);
 
-    // 4. Update CONNECTION Table ONLY
-    const updateData = {
+    // 4. In-Memory Identity object
+    const botIdentity = {
       assistantName: identity?.bot_name || result.metadata.title || "AI Assistant",
       welcomeMessage: identity?.welcome_message || `Welcome to ${result.metadata.title}!`,
       tone: identity?.tone || "neutral",
@@ -140,15 +143,27 @@ router.post("/:connectionId/auto-extract", async (req, res) => {
       brandingStatus: branding.status
     };
 
-    await connection.update(updateData);
+    // 5. Update DB ONLY if not temp
+    if (connection) {
+      await connection.update({
+        assistantName: botIdentity.assistantName,
+        welcomeMessage: botIdentity.welcomeMessage,
+        tone: botIdentity.tone,
+        websiteDescription: botIdentity.websiteDescription,
+        logoUrl: botIdentity.logoUrl,
+        brandingStatus: botIdentity.brandingStatus
+      });
+    }
 
     res.json({
       status: "initialized",
+      isTemp,
       bot_identity: {
-        name: updateData.assistantName,
-        welcomeMessage: updateData.welcomeMessage,
-        tone: updateData.tone,
-        summary: updateData.websiteDescription
+        name: botIdentity.assistantName,
+        welcomeMessage: botIdentity.welcomeMessage,
+        tone: botIdentity.tone,
+        summary: botIdentity.websiteDescription,
+        logoUrl: botIdentity.logoUrl
       }
     });
 
