@@ -17,4 +17,3 @@ res.json({
     totalSessions: sessions.length,
     totalMessages: sessions.reduce((a, s) => a + s.messages.length, 0)
 });
-});
