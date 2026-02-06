@@ -143,7 +143,13 @@ router.post("/:connectionId/auto-extract", async (req, res) => {
 
     // 3. AI Inference for Identity
     console.log(`🤖 [DEBUG] Step 3: Running AI inference...`);
-    const identity = await aiService.inferBotIdentity(result.rawText);
+    let identity = null;
+    try {
+      identity = await aiService.inferBotIdentity(result.rawText);
+    } catch (aiErr) {
+      console.error("🔥 AI Inference failed during extract:", aiErr.message);
+    }
+
     if (!identity) {
       console.warn(`⚠️ [DEBUG] Step 3: AI Inference returned null`);
     }

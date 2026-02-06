@@ -1,7 +1,9 @@
-const OpenAI = require("openai");
+if (!process.env.OPENAI_API_KEY) {
+  console.warn("⚠️ [aiservice] OPENAI_API_KEY is missing!");
+}
 
 const openai = new OpenAI({
-  apiKey: process.env.OPENAI_API_KEY
+  apiKey: process.env.OPENAI_API_KEY || "dummy_key"
 });
 
 /**

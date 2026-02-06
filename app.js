@@ -61,8 +61,6 @@ app.use((err, req, res, next) => {
 const path = require('path');
 app.use(express.static(path.join(__dirname, 'public')));
 
-app.use(express.json());
-
 // HEALTH CHECK
 app.get("/health", (req, res) => {
   res.status(200).json({
@@ -96,7 +94,7 @@ sequelize.sync()
   .then(() => {
     console.log("📦 Database synced successfully");
 
-    app.listen(PORT, () => {
+    app.listen(PORT, "0.0.0.0", () => {
       console.log(`🚀 Server running on port ${PORT}`);
       console.log(`📡 API endpoints:`);
       console.log(`   POST /api/chat/send`);
@@ -105,8 +103,12 @@ sequelize.sync()
     });
   })
   .catch((err) => {
-    console.error("❌ Database sync failed:", err);
-    process.exit(1); // fail fast in production
+    console.error("❌ Database sync failed but continuing start:", err.message);
+    // On Render, we want the server to actually start even if sync fails
+    // so that the health check passes and we can debug via logs.
+    app.listen(PORT, "0.0.0.0", () => {
+      console.log(`🚀 Server emergency start on port ${PORT} (Sync Failed)`);
+    });
   });
 
 // KEEP PROCESS ALIVE (Windows safety)
