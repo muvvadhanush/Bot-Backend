@@ -39,6 +39,72 @@ themeToggle.addEventListener('click', () => {
     setTheme(isDark ? 'light' : 'dark');
 });
 
+// --- BEHAVIOR ENGINE ---
+const salesSlider = document.getElementById('salesIntensity');
+const salesVal = document.getElementById('salesVal');
+const empathySlider = document.getElementById('empathyLevel');
+const empathyVal = document.getElementById('empathyVal');
+
+salesSlider.addEventListener('input', (e) => {
+    salesVal.textContent = (e.target.value / 100).toFixed(1);
+});
+
+empathySlider.addEventListener('input', (e) => {
+    empathyVal.textContent = (e.target.value / 100).toFixed(1);
+});
+
+// --- PAGE OVERRIDES ---
+let behaviorOverrides = [];
+
+function renderOverrides() {
+    const list = document.getElementById('overridesList');
+    list.innerHTML = '';
+    behaviorOverrides.forEach((rule, index) => {
+        const div = document.createElement('div');
+        div.className = 'section-box';
+        div.style.marginBottom = '10px';
+        div.style.padding = '10px';
+        div.innerHTML = `
+            <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px;">
+                <strong>Rule #${index + 1}</strong>
+                <button type="button" class="btn text small" style="color: red;" onclick="removeOverrideRule(${index})">Remove</button>
+            </div>
+            <div class="form-group" style="margin-bottom: 8px;">
+                <label>Match Path (e.g. /pricing)</label>
+                <input type="text" value="${rule.match}" onchange="updateOverrideRule(${index}, 'match', this.value)">
+            </div>
+            <div class="form-group" style="margin-bottom: 8px;">
+                <label>Special Instruction</label>
+                <input type="text" value="${rule.instruction || ''}" onchange="updateOverrideRule(${index}, 'instruction', this.value)" placeholder="e.g. Be more aggressive">
+            </div>
+            <div class="form-group">
+                <label>Sales Intensity Override</label>
+                <input type="number" step="0.1" min="0" max="1" value="${rule.overrides?.salesIntensity || 0}" onchange="updateOverrideProp(${index}, 'salesIntensity', this.value)">
+            </div>
+        `;
+        list.appendChild(div);
+    });
+}
+
+window.removeOverrideRule = (index) => {
+    behaviorOverrides.splice(index, 1);
+    renderOverrides();
+};
+
+window.updateOverrideRule = (index, key, val) => {
+    behaviorOverrides[index][key] = val;
+};
+
+window.updateOverrideProp = (index, key, val) => {
+    if (!behaviorOverrides[index].overrides) behaviorOverrides[index].overrides = {};
+    behaviorOverrides[index].overrides[key] = parseFloat(val);
+};
+
+document.getElementById('addOverrideBtn').addEventListener('click', () => {
+    behaviorOverrides.push({ match: '', instruction: '', overrides: { salesIntensity: 0.8 } });
+    renderOverrides();
+});
+
 // --- CONNECTIONS ---
 
 // Load Connections
@@ -141,7 +207,16 @@ form.addEventListener('submit', async (e) => {
         tone: document.getElementById('tone').value,
         knowledgeBase: document.getElementById('knowledgeBase').value,
         logoUrl: document.getElementById('logoUrl').value,
-        allowedDomains: document.getElementById('allowedDomains').value.split(',').map(s => s.trim()).filter(s => s !== '')
+        allowedDomains: document.getElementById('allowedDomains').value.split(',').map(s => s.trim()).filter(s => s !== ''),
+        behaviorProfile: {
+            assistantRole: document.getElementById('assistantRole').value,
+            tone: document.getElementById('behaviorTone').value,
+            responseLength: document.getElementById('responseLength').value,
+            salesIntensity: parseFloat(salesVal.textContent),
+            empathyLevel: parseFloat(empathyVal.textContent),
+            primaryGoal: document.getElementById('primaryGoal').value
+        },
+        behaviorOverrides: behaviorOverrides
     };
 
     try {
@@ -175,6 +250,8 @@ document.getElementById('newConnectionBtn').addEventListener('click', () => {
     isEditMode = false;
     currentEditId = null;
     form.reset();
+    behaviorOverrides = [];
+    renderOverrides();
     modalTitle.textContent = 'Create New Connection';
     form.querySelector('button[type="submit"]').textContent = 'Create Connection';
     document.getElementById('connectionId').disabled = false; // Allow editing ID for new
@@ -217,6 +294,20 @@ window.editConnection = async (id) => {
         document.getElementById('knowledgeBase').value = conn.knowledgeBase || '';
         document.getElementById('logoUrl').value = conn.logoUrl || '';
         document.getElementById('allowedDomains').value = Array.isArray(conn.allowedDomains) ? conn.allowedDomains.join(', ') : (conn.allowedDomains || '');
+
+        // Populate Behavior
+        const profile = conn.behaviorProfile || {};
+        document.getElementById('assistantRole').value = profile.assistantRole || 'support_agent';
+        document.getElementById('behaviorTone').value = profile.tone || 'neutral';
+        document.getElementById('responseLength').value = profile.responseLength || 'medium';
+        document.getElementById('primaryGoal').value = profile.primaryGoal || 'support';
+        salesSlider.value = (profile.salesIntensity || 0) * 100;
+        salesVal.textContent = (profile.salesIntensity || 0).toFixed(1);
+        empathySlider.value = (profile.empathyLevel || 0.5) * 100;
+        empathyVal.textContent = (profile.empathyLevel || 0.5).toFixed(1);
+
+        behaviorOverrides = conn.behaviorOverrides || [];
+        renderOverrides();
 
         modalTitle.textContent = 'Edit Connection';
         form.querySelector('button[type="submit"]').textContent = 'Update Connection';

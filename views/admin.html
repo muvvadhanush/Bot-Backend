@@ -179,8 +179,12 @@
                     <!-- Tabs -->
                     <div class="tabs">
                         <button class="tab-btn active" data-tab="tab-general">General</button>
+                        <button class="tab-btn" data-tab="tab-behavior">🧠 Behavior</button>
                         <button class="tab-btn" data-tab="tab-knowledge">Knowledge & Branding</button>
                     </div>
+
+                    <!-- General Tab -->
+                    <!-- ... -->
 
                     <!-- General Tab -->
                     <div id="tab-general" class="tab-content active">
@@ -237,6 +241,78 @@
                                 <button type="submit" class="btn primary">Save Connection</button>
                             </div>
                         </form>
+                    </div>
+
+                    <!-- Behavior Tab -->
+                    <div id="tab-behavior" class="tab-content">
+                        <div class="section-box">
+                            <h3>🧠 Website Behavior Profile</h3>
+                            <div class="row">
+                                <div class="form-group half">
+                                    <label for="assistantRole">Assistant Role</label>
+                                    <select id="assistantRole">
+                                        <option value="sales_assistant">Sales Assistant</option>
+                                        <option value="support_agent">Support Agent</option>
+                                        <option value="guide">Guide</option>
+                                    </select>
+                                </div>
+                                <div class="form-group half">
+                                    <label for="behaviorTone">Tone</label>
+                                    <select id="behaviorTone">
+                                        <option value="friendly">Friendly</option>
+                                        <option value="formal">Formal</option>
+                                        <option value="neutral">Neutral</option>
+                                    </select>
+                                </div>
+                            </div>
+
+                            <div class="row">
+                                <div class="form-group half">
+                                    <label for="responseLength">Response Length</label>
+                                    <select id="responseLength">
+                                        <option value="short">Short</option>
+                                        <option value="medium">Medium</option>
+                                        <option value="long">Long</option>
+                                    </select>
+                                </div>
+                                <div class="form-group half">
+                                    <label for="primaryGoal">Primary Goal</label>
+                                    <select id="primaryGoal">
+                                        <option value="convert">Convert</option>
+                                        <option value="support">Support</option>
+                                        <option value="educate">Educate</option>
+                                    </select>
+                                </div>
+                            </div>
+
+                            <div class="form-group">
+                                <label for="salesIntensity">Sales Intensity (0.0 - 1.0)</label>
+                                <div style="display: flex; align-items: center; gap: 10px;">
+                                    <input type="range" id="salesIntensity" min="0" max="100" value="0"
+                                        style="flex-grow: 1;">
+                                    <span id="salesVal">0.0</span>
+                                </div>
+                            </div>
+
+                            <div class="form-group">
+                                <label for="empathyLevel">Empathy Level (0.0 - 1.0)</label>
+                                <div style="display: flex; align-items: center; gap: 10px;">
+                                    <input type="range" id="empathyLevel" min="0" max="100" value="50"
+                                        style="flex-grow: 1;">
+                                    <span id="empathyVal">0.5</span>
+                                </div>
+                            </div>
+                        </div>
+
+                        <div class="section-box">
+                            <h3>🔗 Page-Level Overrides</h3>
+                            <p style="font-size: 0.8rem; color: #666; margin-bottom: 10px;">Define rules for specific
+                                URLs (e.g. /pricing).</p>
+                            <div id="overridesList">
+                                <!-- Rules added here -->
+                            </div>
+                            <button type="button" class="btn secondary small" id="addOverrideBtn">+ Add Rule</button>
+                        </div>
                     </div>
 
                     <!-- Knowledge & Branding Tab -->

@@ -85,12 +85,12 @@ exports.predictImpact = async (description) => {
   }
 };
 
-exports.freeChat = async ({ message, history, context }) => {
+exports.freeChat = async ({ message, history, context, systemPrompt: customPrompt }) => {
   try {
-    let systemPrompt = "You are a helpful assistant. If the user asks to submit an idea, tell them to type 'submit idea' to start the process. Keep responses short and friendly.";
+    let systemPrompt = customPrompt || "You are a helpful assistant. If the user asks to submit an idea, tell them to type 'submit idea' to start the process. Keep responses short and friendly.";
 
-    // Phase 12: Knowledge Injection
-    if (context) {
+    // Legacy context injection fallback (if customPrompt not provided)
+    if (!customPrompt && context) {
       systemPrompt = `You are a helpful assistant for a specific website. 
 Answer questions ONLY using the provided knowledge below. 
 If the answer is NOT in the knowledge, say you don't know and offer to help with something else. 

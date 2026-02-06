@@ -1,8 +1,10 @@
 const ChatSession = require("../models/ChatSession");
 const Connection = require("../models/Connection");
+const ConnectionKnowledge = require("../models/ConnectionKnowledge"); // Added missing import
 const Idea = require("../models/Idea");
 const aiService = require("../services/aiservice");
-const actionService = require("../services/actionService"); // Phase 5: Generic Actions
+const actionService = require("../services/actionService");
+const promptService = require("../services/promptService");
 
 // Helper to send standardized response
 const sendReply = (res, message, suggestions = [], aiMetadata = null) => {
@@ -15,7 +17,7 @@ const sendReply = (res, message, suggestions = [], aiMetadata = null) => {
 
 exports.sendMessage = async (req, res) => {
   try {
-    const { message, connectionId, sessionId } = req.body;
+    const { message, connectionId, sessionId, url } = req.body;
 
     if (!message || !sessionId) {
       return res.status(400).json({ error: "Missing message or sessionId" });
@@ -101,23 +103,20 @@ exports.sendMessage = async (req, res) => {
           aiEnabled = permsObj.aiEnabled;
         }
 
-        console.log(`[DEBUG] Connection: ${connectionId} | AI Enabled: ${aiEnabled} (Type: ${typeof aiEnabled})`);
+        console.log(`[DEBUG] Connection: ${connectionId} | AI Enabled: ${aiEnabled}`);
 
         let aiReply = "I'm listening.";
-        if (aiEnabled === true || aiEnabled === "true") {  // Handle boolean or string 'true'
+        if (aiEnabled === true || aiEnabled === "true") {
 
           // --- PHASE 12: KNOWLEDGE RETRIEVAL (RAG-LITE) ---
           let knowledgeContext = "";
           try {
-            // 1. Fetch Knowledge
             const knowledgeEntries = await ConnectionKnowledge.findAll({
               where: { connectionId, status: 'READY' }
             });
 
             if (knowledgeEntries.length > 0) {
-              // 2. Keyword Scoring
               const userTokens = message.toLowerCase().replace(/[^\w\s]/g, '').split(/\s+/).filter(w => w.length > 3);
-
               const scored = knowledgeEntries.map(k => {
                 const text = (k.cleanedText || "").toLowerCase();
                 let score = 0;
@@ -127,24 +126,28 @@ exports.sendMessage = async (req, res) => {
                 return { ...k.dataValues, score };
               });
 
-              // 3. Sort & Filter
               scored.sort((a, b) => b.score - a.score);
               const topSnippets = scored.filter(s => s.score > 0).slice(0, 3);
 
-              // 4. Construct Context
               if (topSnippets.length > 0) {
                 knowledgeContext = topSnippets.map(s => `- ${s.cleanedText}`).join("\n\n");
-                // Truncate safely
                 if (knowledgeContext.length > 2000) knowledgeContext = knowledgeContext.substring(0, 2000) + "...";
                 console.log(`📚 Injected ${topSnippets.length} snippets for chat.`);
               }
             }
           } catch (err) {
             console.error("Knowledge Retrieval Error:", err);
-            // Fail gracefully, continue without context
           }
 
-          aiReply = await aiService.freeChat({ message, history, context: knowledgeContext });
+          // --- STEP 1: WEBSITE BEHAVIOR ENGINE (PROMPT ASSEMBLY) ---
+          const assembledPrompt = await promptService.assemblePrompt(connectionId, url, knowledgeContext);
+
+          aiReply = await aiService.freeChat({
+            message,
+            history,
+            context: knowledgeContext,
+            systemPrompt: assembledPrompt
+          });
         } else {
           console.log("⛔ AI Chat Blocked.");
           aiReply = "AI Chat is disabled. Please type 'submit idea' to start a form (if allowed).";
@@ -187,66 +190,47 @@ exports.sendMessage = async (req, res) => {
 
     switch (session.currentStep) {
       case 'NONE':
-        // Start Flow
         response.text = "Hi! Let's submit a new idea. What is the short TITLE of your idea?";
         nextStep = 'TITLE';
         break;
 
       case 'TITLE':
-        // Validate Title
         if (message.length < 3 || /^\d+$/.test(message)) {
           response.text = "That title seems too short or invalid. Please provide a clear, short title (e.g. 'New Dashboard Widget').";
-          // Stay on TITLE
         } else {
           tempData.title = message;
-
-          // AI Suggestion (Non-blocking)
           const ai = await aiService.suggestTitles(message);
           response.ai_metadata = ai;
-
           response.text = `Got it: "${message}".\n\nNow, please describe the idea in detail (at least 10 characters).`;
           nextStep = 'DESCRIPTION';
         }
         break;
 
       case 'DESCRIPTION':
-        // Validate Description
         if (message.length < 10) {
           response.text = "Please provide a bit more detail (at least 10 characters) so we can understand the idea.";
-          // Stay on DESCRIPTION
         } else {
-          // AI Enhancement & Prediction
           const aiEnhance = await aiService.enhanceDescription(message);
           const aiImpact = await aiService.predictImpact(message);
-
-          tempData.description = message; // Save original user input
+          tempData.description = message;
           response.ai_metadata = { ...aiEnhance, ...aiImpact };
-
           response.text = "Great description. Finally, roughly how many users will this impact? (e.g. '50', 'All users', 'Admin team')";
           response.suggestions = ["10-50", "100+", "All Users"];
-
           if (aiImpact.confidence !== 'low' && aiImpact.predicted_impact > 0) {
             response.suggestions.unshift(`${aiImpact.predicted_impact} (AI Est)`);
           }
-
           nextStep = 'IMPACT';
         }
         break;
 
       case 'IMPACT':
-        // Validate Impact
-        // Simple extraction: check for digits
         const match = message.match(/(\d+)/);
         const num = match ? parseInt(match[0], 10) : 0;
-
         if (num === 0 && !/\d/.test(message) && !message.toLowerCase().includes('all')) {
-          // Let strict validation allow 'all' or actual numbers
           response.text = "I couldn't understand the number of users. Please type a number or estimate (e.g. '50').";
           response.suggestions = ["50", "100", "500"];
-          // Stay on IMPACT
         } else {
-          tempData.impactedUsers = num > 0 ? num : 0; // fallback to 0 if 'all' or text
-
+          tempData.impactedUsers = num > 0 ? num : 0;
           response.text = `Summary:\n- Title: ${tempData.title}\n- Desc: ${tempData.description}\n- Impact: ~${tempData.impactedUsers} users\n\nReady to submit?`;
           response.suggestions = ["Yes, Submit", "No, Restart"];
           nextStep = 'CONFIRM';
@@ -254,42 +238,37 @@ exports.sendMessage = async (req, res) => {
         break;
 
       case 'CONFIRM':
-        const lower = message.toLowerCase();
-        if (lower.includes("yes") || lower.includes("submit") || lower.includes("confirm")) {
-          // --- GENERIC ACTION DISPATCH --- (Phase 5)
+        const confLower = message.toLowerCase();
+        if (confLower.includes("yes") || confLower.includes("submit") || confLower.includes("confirm")) {
           const connectionObj = await Connection.findOne({ where: { connectionId } });
-
-          // Use Connection config OR Default to SAVE (Backward Compatibility)
           const actionConfig = (connectionObj && connectionObj.actionConfig)
             ? connectionObj.actionConfig
             : { type: "SAVE", config: { target: "ideas_table" } };
 
-          // Permission Check for Actions happening in actionService, but we pass permissions explicitly here
+          const payload = {
+            title: tempData.title,
+            description: tempData.description,
+            impact: tempData.impactedUsers,
+            connectionId: connectionId,
+            sessionId: sessionId
+          };
+
           const result = await actionService.executeAction(actionConfig, payload, connectionObj ? connectionObj.permissions : null);
-
-          // Result might contain specific data (like Idea ID) if it was a SAVE action
           const refText = result.data && result.data.ideaId ? ` Reference ID: ${result.data.ideaId}.` : "";
-
           response.text = `✅ ${result.message}${refText}\n\nReturning to free chat.`;
-
-          // EXIT GUIDED FLOW ON SUCCESS
           nextStep = 'SUBMITTED';
           session.mode = 'FREE_CHAT';
-
-        } else if (lower.includes("no") || lower.includes("restart")) {
-          // Reset
+        } else if (confLower.includes("no") || confLower.includes("restart")) {
           tempData = {};
           response.text = "Cancelled. Let's start over. What is the title?";
           nextStep = 'TITLE';
         } else {
           response.text = "Please type 'Yes' to submit or 'No' to cancel.";
           response.suggestions = ["Yes, Submit", "No, Cancel"];
-          // Stay on CONFIRM
         }
         break;
 
       case 'SUBMITTED':
-        // Should not really happen if we switch mode, but safe recovery
         session.mode = 'FREE_CHAT';
         tempData = {};
         response.text = "You are back in free chat. Type 'submit idea' to start again.";
@@ -297,18 +276,16 @@ exports.sendMessage = async (req, res) => {
         break;
 
       default:
-        // Recovery
         nextStep = 'NONE';
         response.text = "System reset. Type 'submit idea' to start.";
         break;
     }
 
-    // 3. Save State (Guided Flow)
+    // 3. Save State
     session.currentStep = nextStep;
     session.tempData = { ...tempData };
     session.changed('tempData', true);
 
-    // Save Message History (Optional, for audit)
     let msgs = session.messages || [];
     if (typeof msgs === 'string') try { msgs = JSON.parse(msgs); } catch (e) { msgs = []; }
 

@@ -112,6 +112,30 @@ const Connection = sequelize.define("Connection", {
       aiEnabled: true
     },
     comment: "Explicitly allowed modes and actions"
+  },
+
+  // Step 1: Website Behavior Engine
+  behaviorProfile: {
+    type: DataTypes.JSON,
+    defaultValue: {
+      assistantRole: "support_agent",
+      tone: "neutral",
+      responseLength: "medium",
+      salesIntensity: 0.0,
+      empathyLevel: 0.5,
+      primaryGoal: "support",
+      hardConstraints: {
+        never_claim: [],
+        escalation_path: "human_support"
+      }
+    },
+    comment: "Controls how the bot thinks and responds globally"
+  },
+
+  behaviorOverrides: {
+    type: DataTypes.JSON,
+    defaultValue: [], // Array of { match: "/path", overrides: {} }
+    comment: "Page-level rules that override the global behavior profile"
   }
 });
 

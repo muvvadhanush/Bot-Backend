@@ -609,7 +609,8 @@
         body: JSON.stringify({
           message: text,
           connectionId: config.connectionId,
-          sessionId
+          sessionId,
+          url: window.location.href
         })
       });
 
