@@ -72,6 +72,11 @@ app.get("/health", (req, res) => {
   });
 });
 
+// ROOT ROUTE
+app.get("/", (req, res) => {
+  res.redirect("/admin");
+});
+
 // ROUTES
 app.use("/api/chat", chatRoutes);
 app.use("/api/connections", connectionRoutes);
