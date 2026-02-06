@@ -25,25 +25,28 @@ services:
       retries: 3
 
   db:
-    image: mysql:8.0
+    image: postgres:15
     container_name: chatbot-db
     environment:
-      MYSQL_DATABASE: ${DB_NAME:-chatbot_db}
-      MYSQL_USER: ${DB_USER:-user}
-      MYSQL_PASSWORD: ${DB_PASSWORD:-password}
-      MYSQL_ROOT_PASSWORD: ${DB_ROOT_PASSWORD:-rootpassword}
+      POSTGRES_DB: ${DB_NAME:-chatbot_db}
+      POSTGRES_USER: ${DB_USER:-user}
+      POSTGRES_PASSWORD: ${DB_PASSWORD:-password}
     ports:
-      - "${DB_PORT_MAPPING:-3306}:3306" # Optional: Expose for local tools
+      - "${DB_PORT_MAPPING:-5432}:5432"
     volumes:
-      - db_data:/var/lib/mysql
+      - postgres_data:/var/lib/postgresql/data
     networks:
       - chatbot-net
+    healthcheck:
+      test: [ "CMD-SHELL", "pg_isready -U $$POSTGRES_USER -d $$POSTGRES_DB" ]
+      interval: 5s
+      timeout: 5s
+      retries: 5
     restart: unless-stopped
-    command: --default-authentication-plugin=mysql_native_password
 
 networks:
   chatbot-net:
     driver: bridge
 
 volumes:
-  db_data:
+  postgres_data:
