@@ -760,11 +760,12 @@
 
     // Fallback logic
     if (window.location.protocol === 'file:') {
-      // Return a transparent 1x1 base64 to avoid ERR_FILE_NOT_FOUND
       return 'data:image/gif;base64,R0lGODlhAQABAIAAAAAAAP///yH5BAEAAAAALAAAAAABAAEAAAIBRAA7';
     }
 
-    return window.location.origin + '/favicon.ico';
+    // Instead of origin, let's use the baseUrl (the backend) for a generic fallback if possible
+    // or just return null and let the icon-span take over.
+    return null;
   }
 
   // Set up header with favicon and name

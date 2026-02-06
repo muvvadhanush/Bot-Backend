@@ -45,6 +45,18 @@ app.use((req, res, next) => {
   next();
 });
 
+app.use(express.json());
+
+// 👇 ERROR HANDLER FOR JSON PARSING
+app.use((err, req, res, next) => {
+  if (err instanceof SyntaxError && err.status === 400 && 'body' in err) {
+    console.error("🔥 JSON SYNTX ERROR in body:", err.message);
+    console.error("🔥 FAILED BODY:", req.body); // Might be partially parsed or string
+    return res.status(400).send({ error: "Malformed JSON body" });
+  }
+  next();
+});
+
 // Serve static files (widget)
 const path = require('path');
 app.use(express.static(path.join(__dirname, 'public')));

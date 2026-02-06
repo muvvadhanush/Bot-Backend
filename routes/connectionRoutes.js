@@ -116,35 +116,51 @@ router.post("/:connectionId/auto-extract", async (req, res) => {
     const { url } = req.body;
     const isTemp = connectionId === 'temp';
 
+    console.log(`📡 [DEBUG] Auto-Extract started for connectionId: ${connectionId}, url: ${url}`);
+
+    let connection = null;
     if (!isTemp) {
       connection = await Connection.findOne({ where: { connectionId } });
-      if (!connection) return res.status(404).json({ error: "Connection not found" });
+      if (!connection) {
+        console.warn(`⚠️ [DEBUG] Connection not found for ID: ${connectionId}`);
+        return res.status(404).json({ error: "Connection not found" });
+      }
     }
 
     if (!url) return res.status(400).json({ error: "URL is required" });
 
     // 1. Scrape Metadata & Text
+    console.log(`🔍 [DEBUG] Step 1: Scraping website...`);
     const result = await scraperService.scrapeWebsite(url);
-    if (!result.success) return res.status(500).json({ error: result.error });
+    if (!result.success) {
+      console.error(`🔥 [DEBUG] Step 1 Failed: ${result.error}`);
+      return res.status(500).json({ error: result.error });
+    }
 
     // 2. Fetch Branding (Images)
+    console.log(`🎨 [DEBUG] Step 2: Fetching branding...`);
     const branding = await scraperService.fetchBranding(url, connectionId);
 
     // 3. AI Inference for Identity
+    console.log(`🤖 [DEBUG] Step 3: Running AI inference...`);
     const identity = await aiService.inferBotIdentity(result.rawText);
+    if (!identity) {
+      console.warn(`⚠️ [DEBUG] Step 3: AI Inference returned null`);
+    }
 
     // 4. In-Memory Identity object
     const botIdentity = {
-      assistantName: identity?.bot_name || result.metadata.title || "AI Assistant",
-      welcomeMessage: identity?.welcome_message || `Welcome to ${result.metadata.title}!`,
+      assistantName: identity?.bot_name || result.metadata?.title || "AI Assistant",
+      welcomeMessage: identity?.welcome_message || `Welcome to ${result.metadata?.title || 'our site'}!`,
       tone: identity?.tone || "neutral",
-      websiteDescription: identity?.site_summary || result.metadata.description || "",
+      websiteDescription: identity?.site_summary || result.metadata?.description || "",
       logoUrl: branding.logoPath || branding.faviconPath || null, // Best available
       brandingStatus: branding.status
     };
 
     // 5. Update DB ONLY if not temp
     if (connection) {
+      console.log(`💾 [DEBUG] Step 5: Updating database for connection...`);
       await connection.update({
         assistantName: botIdentity.assistantName,
         welcomeMessage: botIdentity.welcomeMessage,
@@ -155,6 +171,7 @@ router.post("/:connectionId/auto-extract", async (req, res) => {
       });
     }
 
+    console.log(`✅ [DEBUG] Auto-Extract complete for ${connectionId}`);
     res.json({
       status: "initialized",
       isTemp,
@@ -168,7 +185,7 @@ router.post("/:connectionId/auto-extract", async (req, res) => {
     });
 
   } catch (error) {
-    console.error("Auto Extract Error:", error);
+    console.error("🔥 [DEBUG] CRITICAL LOG - Auto-Extract Error:", error);
     res.status(500).json({ error: error.message });
   }
 });

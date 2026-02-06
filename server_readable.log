@@ -1,0 +1,21 @@
+﻿[dotenv@17.2.3] injecting env (9) from .env -- tip: ≡ƒöä add secrets lifecycle management: https://dotenvx.com/ops
+≡ƒöÑ chatRoutes.js LOADED
+≡ƒöÑ connectionRoutes.js LOADED
+≡ƒöä Mounting /api/v1/ideas...
+≡ƒöÑ ideaRoutes.js LOADED
+≡ƒôª Database synced successfully
+≡ƒÜÇ Server running on port 5001
+≡ƒôí API endpoints:
+   POST /api/chat/send
+   GET  /api/chat/welcome/:connectionId
+   POST /api/connections/create
+≡ƒôí [DEBUG] POST /api/connections/cb_portal_v1/auto-extract | Content-Type: application/json
+≡ƒôí [DEBUG] RAW BODY: [{
+    "url":  "https://www.youtube.com"
+}]
+≡ƒôí [DEBUG] Auto-Extract started for connectionId: cb_portal_v1, url: https://www.youtube.com
+≡ƒöì [DEBUG] Step 1: Scraping website...
+≡ƒÄ¿ [DEBUG] Step 2: Fetching branding...
+≡ƒñû [DEBUG] Step 3: Running AI inference...
+≡ƒÆ╛ [DEBUG] Step 5: Updating database for connection...
+Γ£à [DEBUG] Auto-Extract complete for cb_portal_v1

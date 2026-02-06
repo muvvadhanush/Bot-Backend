@@ -1,0 +1,41 @@
+﻿[dotenv@17.2.3] injecting env (9) from .env -- tip: ΓÜÖ∩╕Å  override existing env vars with { override: true }
+≡ƒöÑ chatRoutes.js LOADED
+≡ƒöÑ connectionRoutes.js LOADED
+≡ƒöä Mounting /api/v1/ideas...
+≡ƒöÑ ideaRoutes.js LOADED
+≡ƒôª Database synced successfully
+≡ƒÜÇ Server running on port 5001
+≡ƒôí API endpoints:
+   POST /api/chat/send
+   GET  /api/chat/welcome/:connectionId
+   POST /api/connections/create
+node : SyntaxError: Expected property name or '}' 
+in JSON at position 1 (line 1 column 2)
+At line:1 char:67
++ ...  Stop-Process -Force; $env:PORT="5001"; 
+node app.js > server.log 2>&1
++                                             
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+    + CategoryInfo          : NotSpecified: (Synt 
+   axError: Ex...ine 1 column 2):String) [], Rem  
+  oteException
+    + FullyQualifiedErrorId : NativeCommandError
+ 
+    at JSON.parse (<anonymous>)
+    at parse (D:\Laptop\NEW CB\backend\node_module
+s\body-parser\lib\types\json.js:72:19)
+    at D:\Laptop\NEW CB\backend\node_modules\body-
+parser\lib\read.js:162:18
+    at AsyncResource.runInAsyncScope 
+(node:async_hooks:214:14)
+    at invokeCallback (D:\Laptop\NEW 
+CB\backend\node_modules\raw-body\index.js:238:16)
+    at done (D:\Laptop\NEW 
+CB\backend\node_modules\raw-body\index.js:227:7)
+    at IncomingMessage.onEnd (D:\Laptop\NEW 
+CB\backend\node_modules\raw-body\index.js:287:7)
+    at IncomingMessage.emit (node:events:508:28)
+    at endReadableNT 
+(node:internal/streams/readable:1701:12)
+    at process.processTicksAndRejections 
+(node:internal/process/task_queues:89:21)

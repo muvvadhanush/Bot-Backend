@@ -96,17 +96,18 @@ document.getElementById('extractBtn').addEventListener('click', async (e) => {
 
         const data = await res.json();
 
-        if (data.success) {
-            document.getElementById('websiteName').value = data.metadata.title || '';
-            document.getElementById('assistantName').value = data.suggestedBotName || '';
-            document.getElementById('welcomeMessage').value = data.suggestedWelcome || '';
-            document.getElementById('tone').value = data.suggestedTone || '';
-            document.getElementById('knowledgeBase').value = data.knowledgeBase || '';
-            document.getElementById('logoUrl').value = data.logoUrl || '';
+        if (data.status === "initialized" && data.bot_identity) {
+            const iden = data.bot_identity;
+            document.getElementById('websiteName').value = iden.name || '';
+            document.getElementById('assistantName').value = iden.name || '';
+            document.getElementById('welcomeMessage').value = iden.welcomeMessage || '';
+            document.getElementById('tone').value = iden.tone || '';
+            document.getElementById('knowledgeBase').value = iden.summary || '';
+            document.getElementById('logoUrl').value = iden.logoUrl || '';
 
             // Suggest ID: clean url/title to snake_case
             if (!isEditMode) {
-                const base = (data.metadata.title || 'site').toLowerCase().replace(/[^a-z0-9]/g, '_').substring(0, 15);
+                const base = (iden.name || 'site').toLowerCase().replace(/[^a-z0-9]/g, '_').substring(0, 15);
                 document.getElementById('connectionId').value = `${base}_v1`;
             }
 
