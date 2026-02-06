@@ -87,29 +87,23 @@ app.get("/admin", basicAuth, (req, res) => {
   res.sendFile(path.join(__dirname, "views", "admin.html"));
 });
 
-// DATABASE SYNC & SERVER START
+// DATABASE STARTUP & BACKGROUND SYNC
 const PORT = process.env.PORT || 5000;
 
-sequelize.sync()
-  .then(() => {
-    console.log("📦 Database synced successfully");
+app.listen(PORT, "0.0.0.0", () => {
+  console.log(`🚀 Server bound to port ${PORT}`);
+  console.log(`📡 Health check: http://localhost:${PORT}/health`);
 
-    app.listen(PORT, "0.0.0.0", () => {
-      console.log(`🚀 Server running on port ${PORT}`);
-      console.log(`📡 API endpoints:`);
-      console.log(`   POST /api/chat/send`);
-      console.log(`   GET  /api/chat/welcome/:connectionId`);
-      console.log(`   POST /api/connections/create`);
+  // Background Sync: Don't block startup
+  console.log("📦 Starting background database sync...");
+  sequelize.sync()
+    .then(() => {
+      console.log("✅ Database synced successfully in background");
+    })
+    .catch((err) => {
+      console.error("❌ Background database sync failed:", err.message);
     });
-  })
-  .catch((err) => {
-    console.error("❌ Database sync failed but continuing start:", err.message);
-    // On Render, we want the server to actually start even if sync fails
-    // so that the health check passes and we can debug via logs.
-    app.listen(PORT, "0.0.0.0", () => {
-      console.log(`🚀 Server emergency start on port ${PORT} (Sync Failed)`);
-    });
-  });
+});
 
 // KEEP PROCESS ALIVE (Windows safety)
 setInterval(() => { }, 1000);
